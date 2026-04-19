@@ -14,13 +14,136 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          created_at: string
+          deaths: number
+          gender: string
+          gun_level: number
+          id: string
+          level: number
+          money: number
+          outfit: string
+          players_killed: number
+          sword_level: number
+          updated_at: string
+          username: string
+          xp: number
+          zombies_killed: number
+        }
+        Insert: {
+          created_at?: string
+          deaths?: number
+          gender?: string
+          gun_level?: number
+          id: string
+          level?: number
+          money?: number
+          outfit?: string
+          players_killed?: number
+          sword_level?: number
+          updated_at?: string
+          username: string
+          xp?: number
+          zombies_killed?: number
+        }
+        Update: {
+          created_at?: string
+          deaths?: number
+          gender?: string
+          gun_level?: number
+          id?: string
+          level?: number
+          money?: number
+          outfit?: string
+          players_killed?: number
+          sword_level?: number
+          updated_at?: string
+          username?: string
+          xp?: number
+          zombies_killed?: number
+        }
+        Relationships: []
+      }
+      room_members: {
+        Row: {
+          joined_at: string
+          room_id: string
+          user_id: string
+        }
+        Insert: {
+          joined_at?: string
+          room_id: string
+          user_id: string
+        }
+        Update: {
+          joined_at?: string
+          room_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "room_members_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rooms: {
+        Row: {
+          code: string
+          created_at: string
+          host_id: string
+          id: string
+          is_public: boolean
+          last_active_at: string
+          max_players: number
+          name: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          host_id: string
+          id?: string
+          is_public?: boolean
+          last_active_at?: string
+          max_players?: number
+          name: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          host_id?: string
+          id?: string
+          is_public?: boolean
+          last_active_at?: string
+          max_players?: number
+          name?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      generate_room_code: { Args: never; Returns: string }
+      save_player_stats: {
+        Args: {
+          _deaths: number
+          _gun_level: number
+          _level: number
+          _money: number
+          _outfit: string
+          _players_killed: number
+          _sword_level: number
+          _xp: number
+          _zombies_killed: number
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
