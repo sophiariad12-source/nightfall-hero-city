@@ -33,13 +33,32 @@ const CITY_LIMITS = {
 };
 
 export function Game() {
-  const started = useGame((s) => s.started);
+  const { user, loading } = useAuth();
+  const { room } = useMultiplayer();
+  if (loading) return <LoadingScreen />;
+  if (!user) return <AuthScreen />;
+  if (!room) return <Lobby />;
+  return <GameScene />;
+}
+
+function LoadingScreen() {
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-background">
+      <div className="font-display text-2xl text-glow" style={{ color: "var(--accent)" }}>
+        DEAD CITY
+      </div>
+    </div>
+  );
+}
+
+function GameScene() {
   const health = useGame((s) => s.health);
   const scene = useGame((s) => s.scene);
   const shopUIOpen = useGame((s) => s.shopUIOpen);
   const enterScene = useGame((s) => s.enterScene);
   const exitToCity = useGame((s) => s.exitToCity);
   const openShopUI = useGame((s) => s.openShopUI);
+  const started = useGame((s) => s.started);
 
   const playerRef = useRef<PlayerHandle>(null);
   const playerPosRef = useRef<THREE.Vector3 | null>(null);
