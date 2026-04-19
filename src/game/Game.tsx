@@ -47,7 +47,9 @@ export function Game() {
   useEffect(() => {
     const id = setInterval(() => {
       if (playerRef.current) {
-        playerPosRef.current = playerRef.current.getPosition();
+        const p = playerRef.current.getPosition();
+        playerPosRef.current = p;
+        (window as any).__playerRefPos = { x: p.x, z: p.z };
       }
     }, 50);
     return () => clearInterval(id);
