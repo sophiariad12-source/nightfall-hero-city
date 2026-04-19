@@ -1,8 +1,7 @@
 import { useRef, useEffect, useState, forwardRef, useImperativeHandle } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { useGame } from "./store";
-import { getBuildingBounds } from "./City";
+import { useGame, OUTFITS } from "./store";
 
 const SPEED = 8;
 const RUN_MULT = 1.7;
@@ -10,28 +9,42 @@ const RUN_MULT = 1.7;
 export interface PlayerHandle {
   getPosition: () => THREE.Vector3;
   getDirection: () => THREE.Vector3;
+  setPosition: (x: number, y: number, z: number) => void;
+}
+
+export interface CollisionBox {
+  x: number;
+  z: number;
+  w: number;
+  d: number;
 }
 
 interface Props {
   onShoot?: (origin: THREE.Vector3, dir: THREE.Vector3) => void;
   onMelee?: (origin: THREE.Vector3, dir: THREE.Vector3) => void;
+  onInteract?: () => void;
+  bounds: CollisionBox[];
+  worldMin?: { x: number; z: number };
+  worldMax?: { x: number; z: number };
+  inputEnabled?: boolean;
+  startPos?: { x: number; z: number; yaw?: number };
 }
 
 export const Player = forwardRef<PlayerHandle, Props>(function Player(
-  { onShoot, onMelee },
+  { onShoot, onMelee, onInteract, bounds, worldMin, worldMax, inputEnabled = true, startPos },
   ref
 ) {
   const groupRef = useRef<THREE.Group>(null!);
   const velocity = useRef(new THREE.Vector3());
   const keys = useRef<Record<string, boolean>>({});
-  const yaw = useRef(0);
+  const yaw = useRef(startPos?.yaw ?? 0);
   const pitch = useRef(-0.2);
   const { camera, gl } = useThree();
   const gender = useGame((s) => s.gender);
   const activeWeapon = useGame((s) => s.activeWeapon);
+  const outfitId = useGame((s) => s.outfit);
   const switchWeapon = useGame((s) => s.switchWeapon);
   const [pointerLocked, setPointerLocked] = useState(false);
-  const bounds = useRef(getBuildingBounds());
   const lastAttack = useRef(0);
 
   useImperativeHandle(ref, () => ({
@@ -41,13 +54,30 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
       d.applyEuler(new THREE.Euler(0, yaw.current, 0, "YXZ"));
       return d;
     },
+    setPosition: (x, y, z) => {
+      if (groupRef.current) groupRef.current.position.set(x, y, z);
+    },
   }));
 
+  // Apply startPos when it changes
   useEffect(() => {
+    if (startPos && groupRef.current) {
+      groupRef.current.position.set(startPos.x, 0, startPos.z);
+      if (startPos.yaw !== undefined) yaw.current = startPos.yaw;
+    }
+  }, [startPos]);
+
+  useEffect(() => {
+    if (!inputEnabled) {
+      if (document.pointerLockElement === gl.domElement) document.exitPointerLock();
+      keys.current = {};
+      return;
+    }
     const down = (e: KeyboardEvent) => {
       keys.current[e.code] = true;
       if (e.code === "Digit1") switchWeapon("gun");
       if (e.code === "Digit2") switchWeapon("sword");
+      if (e.code === "KeyE") onInteract?.();
     };
     const up = (e: KeyboardEvent) => (keys.current[e.code] = false);
     const mouseMove = (e: MouseEvent) => {
@@ -88,7 +118,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
       gl.domElement.removeEventListener("mousedown", click);
       document.removeEventListener("pointerlockchange", lockChange);
     };
-  }, [gl, pointerLocked, activeWeapon, onShoot, onMelee, switchWeapon]);
+  }, [gl, pointerLocked, activeWeapon, onShoot, onMelee, onInteract, switchWeapon, inputEnabled]);
 
   useFrame((_, dt) => {
     const g = groupRef.current;
@@ -100,30 +130,34 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
       new THREE.Euler(0, yaw.current, 0, "YXZ")
     );
     const dir = new THREE.Vector3();
-    if (keys.current["KeyW"]) dir.add(forward);
-    if (keys.current["KeyS"]) dir.sub(forward);
-    if (keys.current["KeyD"]) dir.add(right);
-    if (keys.current["KeyA"]) dir.sub(right);
+    if (inputEnabled) {
+      if (keys.current["KeyW"]) dir.add(forward);
+      if (keys.current["KeyS"]) dir.sub(forward);
+      if (keys.current["KeyD"]) dir.add(right);
+      if (keys.current["KeyA"]) dir.sub(right);
+    }
     if (dir.lengthSq() > 0) dir.normalize();
     const speed = SPEED * (keys.current["ShiftLeft"] ? RUN_MULT : 1);
     velocity.current.x = dir.x * speed;
     velocity.current.z = dir.z * speed;
 
-    // Try X then Z movement with collision
     const next = g.position.clone();
     next.x += velocity.current.x * dt;
-    if (!collides(next.x, g.position.z, bounds.current)) g.position.x = next.x;
+    if (!collides(next.x, g.position.z, bounds)) g.position.x = next.x;
     next.z = g.position.z + velocity.current.z * dt;
-    if (!collides(g.position.x, next.z, bounds.current)) g.position.z = next.z;
+    if (!collides(g.position.x, next.z, bounds)) g.position.z = next.z;
 
-    // Map bounds
-    g.position.x = Math.max(-180, Math.min(180, g.position.x));
-    g.position.z = Math.max(-180, Math.min(180, g.position.z));
+    if (worldMin) {
+      g.position.x = Math.max(worldMin.x, g.position.x);
+      g.position.z = Math.max(worldMin.z, g.position.z);
+    }
+    if (worldMax) {
+      g.position.x = Math.min(worldMax.x, g.position.x);
+      g.position.z = Math.min(worldMax.z, g.position.z);
+    }
 
-    // Rotate body to face yaw
     g.rotation.y = yaw.current;
 
-    // Third-person camera
     const camOffset = new THREE.Vector3(0, 2.2, 5).applyEuler(
       new THREE.Euler(pitch.current, yaw.current, 0, "YXZ")
     );
@@ -133,28 +167,36 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
   });
 
   const skinColor = gender === "male" ? "#d4a574" : "#e8b896";
-  const shirtColor = gender === "male" ? "#2d4a6b" : "#a83a5c";
-  const pantsColor = "#1a1d24";
+  const outfit = OUTFITS.find((o) => o.id === outfitId)!;
+  const shirtColor = outfit.shirt;
+  const pantsColor = outfit.pants;
+  const hatColor = outfit.hat;
   const hairColor = gender === "male" ? "#3a2818" : "#5a3a28";
 
   return (
-    <group ref={groupRef} position={[0, 0, 0]}>
-      {/* Body */}
+    <group ref={groupRef} position={[startPos?.x ?? 0, 0, startPos?.z ?? 0]}>
       <mesh castShadow position={[0, 1.1, 0]}>
         <boxGeometry args={[0.6, 0.8, 0.35]} />
         <meshStandardMaterial color={shirtColor} />
       </mesh>
-      {/* Head */}
       <mesh castShadow position={[0, 1.75, 0]}>
         <boxGeometry args={[0.4, 0.4, 0.4]} />
         <meshStandardMaterial color={skinColor} />
       </mesh>
-      {/* Hair */}
-      <mesh castShadow position={[0, 1.95, gender === "female" ? -0.05 : 0]}>
-        <boxGeometry args={[0.42, gender === "female" ? 0.5 : 0.15, gender === "female" ? 0.5 : 0.42]} />
-        <meshStandardMaterial color={hairColor} />
-      </mesh>
-      {/* Arms */}
+      {/* Hair (only if no hat or female long hair) */}
+      {(!hatColor || gender === "female") && (
+        <mesh castShadow position={[0, 1.95, gender === "female" ? -0.05 : 0]}>
+          <boxGeometry args={[0.42, gender === "female" ? 0.5 : 0.15, gender === "female" ? 0.5 : 0.42]} />
+          <meshStandardMaterial color={hairColor} />
+        </mesh>
+      )}
+      {/* Hat */}
+      {hatColor && (
+        <mesh castShadow position={[0, 2.05, 0]}>
+          <boxGeometry args={[0.46, 0.18, 0.46]} />
+          <meshStandardMaterial color={hatColor} />
+        </mesh>
+      )}
       <mesh castShadow position={[-0.4, 1.1, 0]}>
         <boxGeometry args={[0.18, 0.75, 0.22]} />
         <meshStandardMaterial color={shirtColor} />
@@ -163,7 +205,6 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
         <boxGeometry args={[0.18, 0.75, 0.22]} />
         <meshStandardMaterial color={shirtColor} />
       </mesh>
-      {/* Legs */}
       <mesh castShadow position={[-0.16, 0.4, 0]}>
         <boxGeometry args={[0.22, 0.8, 0.25]} />
         <meshStandardMaterial color={pantsColor} />
@@ -172,7 +213,6 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
         <boxGeometry args={[0.22, 0.8, 0.25]} />
         <meshStandardMaterial color={pantsColor} />
       </mesh>
-      {/* Weapon in hand */}
       <group position={[0.45, 1.2, -0.3]}>
         {activeWeapon === "gun" ? (
           <mesh castShadow>
@@ -190,11 +230,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
   );
 });
 
-function collides(
-  x: number,
-  z: number,
-  bounds: { x: number; z: number; w: number; d: number }[]
-) {
+function collides(x: number, z: number, bounds: CollisionBox[]) {
   const r = 0.4;
   for (const b of bounds) {
     if (
