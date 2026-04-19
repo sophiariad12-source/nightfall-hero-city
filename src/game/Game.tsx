@@ -17,6 +17,15 @@ import {
 } from "./Interior";
 import { Owner } from "./Owner";
 import { useGame, SHOPS, type SceneId } from "./store";
+import { RemotePlayers } from "@/multiplayer/RemotePlayers";
+import { MultiplayerBridge } from "@/multiplayer/MultiplayerBridge";
+import { ProfileSync } from "@/multiplayer/ProfileSync";
+import { RoomBar } from "@/multiplayer/RoomBar";
+import { KillFeed } from "@/multiplayer/KillFeed";
+import { useMultiplayer } from "@/multiplayer/MultiplayerProvider";
+import { Lobby } from "@/multiplayer/Lobby";
+import { useAuth } from "@/multiplayer/AuthProvider";
+import { AuthScreen } from "@/multiplayer/AuthScreen";
 
 const CITY_LIMITS = {
   min: { x: -180, z: -180 },
@@ -24,13 +33,32 @@ const CITY_LIMITS = {
 };
 
 export function Game() {
-  const started = useGame((s) => s.started);
+  const { user, loading } = useAuth();
+  const { room } = useMultiplayer();
+  if (loading) return <LoadingScreen />;
+  if (!user) return <AuthScreen />;
+  if (!room) return <Lobby />;
+  return <GameScene />;
+}
+
+function LoadingScreen() {
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-background">
+      <div className="font-display text-2xl text-glow" style={{ color: "var(--accent)" }}>
+        DEAD CITY
+      </div>
+    </div>
+  );
+}
+
+function GameScene() {
   const health = useGame((s) => s.health);
   const scene = useGame((s) => s.scene);
   const shopUIOpen = useGame((s) => s.shopUIOpen);
   const enterScene = useGame((s) => s.enterScene);
   const exitToCity = useGame((s) => s.exitToCity);
   const openShopUI = useGame((s) => s.openShopUI);
+  const started = useGame((s) => s.started);
 
   const playerRef = useRef<PlayerHandle>(null);
   const playerPosRef = useRef<THREE.Vector3 | null>(null);
@@ -136,10 +164,15 @@ export function Game() {
     bulletsApi.current?.spawn(origin, dir);
     if (scene === "city") zombieHitRef.current?.(origin, dir, false);
     else if (scene === "bodega") ownerHitRef.current?.(origin, dir, false);
+    // PvP hit test against remote players
+    (window as any).__mpHitTest?.(origin, dir, false);
+    // Broadcast shot tracer to other players
+    (window as any).__mpBroadcastShot?.(origin, dir, "gun");
   }, [scene]);
   const handleMelee = useCallback((origin: THREE.Vector3, dir: THREE.Vector3) => {
     if (scene === "city") zombieHitRef.current?.(origin, dir, true);
     else if (scene === "bodega") ownerHitRef.current?.(origin, dir, true);
+    (window as any).__mpHitTest?.(origin, dir, true);
   }, [scene]);
 
   // Bullet tracer for owner shots
