@@ -17,6 +17,15 @@ import {
 } from "./Interior";
 import { Owner } from "./Owner";
 import { useGame, SHOPS, type SceneId } from "./store";
+import { RemotePlayers } from "@/multiplayer/RemotePlayers";
+import { MultiplayerBridge } from "@/multiplayer/MultiplayerBridge";
+import { ProfileSync } from "@/multiplayer/ProfileSync";
+import { RoomBar } from "@/multiplayer/RoomBar";
+import { KillFeed } from "@/multiplayer/KillFeed";
+import { useMultiplayer } from "@/multiplayer/MultiplayerProvider";
+import { Lobby } from "@/multiplayer/Lobby";
+import { useAuth } from "@/multiplayer/AuthProvider";
+import { AuthScreen } from "@/multiplayer/AuthScreen";
 
 const CITY_LIMITS = {
   min: { x: -180, z: -180 },
@@ -136,10 +145,15 @@ export function Game() {
     bulletsApi.current?.spawn(origin, dir);
     if (scene === "city") zombieHitRef.current?.(origin, dir, false);
     else if (scene === "bodega") ownerHitRef.current?.(origin, dir, false);
+    // PvP hit test against remote players
+    (window as any).__mpHitTest?.(origin, dir, false);
+    // Broadcast shot tracer to other players
+    (window as any).__mpBroadcastShot?.(origin, dir, "gun");
   }, [scene]);
   const handleMelee = useCallback((origin: THREE.Vector3, dir: THREE.Vector3) => {
     if (scene === "city") zombieHitRef.current?.(origin, dir, true);
     else if (scene === "bodega") ownerHitRef.current?.(origin, dir, true);
+    (window as any).__mpHitTest?.(origin, dir, true);
   }, [scene]);
 
   // Bullet tracer for owner shots
